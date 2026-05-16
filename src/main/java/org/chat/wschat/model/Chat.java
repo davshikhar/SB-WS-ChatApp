@@ -1,6 +1,7 @@
 package org.chat.wschat.model;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -11,17 +12,20 @@ import java.time.format.DateTimeFormatter;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 public class Chat {
     public enum Type{
         JOIN, //for joining the chat room
         CHAT, //for sending messaged
-        LEAVE //for leaving the room
+        LEAVE, //for leaving the room
+        INVITE //to invite other users to the channel
     }
     private Type type;
     private String content;
     private String sender;
     private String timeStamp;
     private String avatar; //initial avatar photo
+    private String channelId;
 
     public static Chat ofChat(String sender, String content){
         Chat msg = new Chat();
