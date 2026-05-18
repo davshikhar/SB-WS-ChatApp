@@ -1,5 +1,6 @@
 package org.chat.wschat.component;
 
+import lombok.extern.slf4j.Slf4j;
 import org.chat.wschat.model.Chat;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
@@ -18,6 +19,7 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
  *
  */
 @Component
+@Slf4j
 public class WSEventListener {
 
     @Autowired
@@ -28,9 +30,13 @@ public class WSEventListener {
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(disconnectEvent.getMessage());
 
         String username = (String) headerAccessor.getSessionAttributes().get("username");
-        if(username != null){
-            Chat message = Chat.ofLeave(username);
-            messageSendingOperations.convertAndSend("/topic/public",message);
+        String channelId = (String) headerAccessor.getSessionAttributes().get("channelId");
+
+        if(username != null && channelId != null){
+            log.info("User="+username+" disconnected from channel="+channelId);
+            Chat chat = Chat.builder().type(Chat.Type.LEAVE).sender(username).channelId(channelId).content(username+" left the channel")
+                    .build();
+            messageSendingOperations.convertAndSend("/topic/channel."+channelId, chat);
         }
     }
 }

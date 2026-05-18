@@ -1,6 +1,10 @@
 package org.chat.wschat.Config;
 
+import org.chat.wschat.Security.JwtChannelInterceptor;
+import org.chat.wschat.Security.SubscriptionInterceptor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -9,6 +13,11 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @Configuration
 @EnableWebSocketMessageBroker
 public class WSconfig implements WebSocketMessageBrokerConfigurer {
+
+    @Autowired
+    private JwtChannelInterceptor jwtChannelInterceptor;
+    @Autowired
+    private SubscriptionInterceptor subscriptionInterceptor;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config){
@@ -21,6 +30,11 @@ public class WSconfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/ws-chat")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
+    }
+
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(jwtChannelInterceptor, subscriptionInterceptor);
     }
 }
 

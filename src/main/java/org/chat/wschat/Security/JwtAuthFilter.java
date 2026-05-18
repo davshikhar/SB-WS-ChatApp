@@ -28,6 +28,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private UserDetailsService userDetailsService;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        //to skip the jwt token checking for h2 databse
+        String path = request.getServletPath();
+        // Skip JWT filter for these paths
+        return path.startsWith("/h2-console") ||
+                path.startsWith("/auth") ||
+                path.startsWith("/ws-chat") ||
+                path.equals("/") ||
+                path.startsWith("/home");
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         String token = extractToken(request);
 

@@ -25,7 +25,8 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel messageChannel){
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-        if(accessor!=null && StompCommand.CONNECT.equals(accessor.getCommand())){
+
+        if(accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())){
             String token = extractToken(accessor);
             if(!StringUtils.hasText(token) || !jwtUtil.validateToken(token)){
                 throw new IllegalArgumentException("Invalid or missing token!");
@@ -34,9 +35,23 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
             String username = jwtUtil.extractUsername(token);
             UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                userDetails, null, userDetails.getAuthorities());
             accessor.setUser(auth);
+
+            // Store username in session for subsequent messages
+            accessor.getSessionAttributes().put("username", username);
+        } else if(accessor != null && accessor.getUser() == null) {
+            // For non-CONNECT messages, restore user from session
+            String username = (String) accessor.getSessionAttributes().get("username");
+            if(username != null) {
+                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                    userDetails, null, userDetails.getAuthorities());
+                accessor.setUser(auth);
+            }
         }
+
         return message;
     }
 

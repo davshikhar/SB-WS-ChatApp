@@ -77,4 +77,15 @@ public class ChannelService {
             return true;
         return channel.getMembers().contains(username);
     }
+
+    public Channel getChannelByName(String name){
+        return channelRepository.findByName(name).orElseThrow(() -> new IllegalArgumentException("Channel not found: " + name));
+    }
+
+    public boolean isMemberByName(String channelName, String username){
+        Channel channel = channelRepository.findByName(channelName).orElseThrow(() -> new IllegalArgumentException("Channel not found: " + channelName));
+        if(channel.getType() == Channel.ChannelType.PUBLIC)
+            return true;
+        return channel.getMembers().contains(username);
+    }
 }

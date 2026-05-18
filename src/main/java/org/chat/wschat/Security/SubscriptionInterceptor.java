@@ -1,9 +1,7 @@
 package org.chat.wschat.Security;
 
-import lombok.RequiredArgsConstructor;
 import org.chat.wschat.Repository.ChannelRepository;
 import org.chat.wschat.model.Channel;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
