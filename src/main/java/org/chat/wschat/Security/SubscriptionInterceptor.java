@@ -38,7 +38,8 @@ public class SubscriptionInterceptor implements ChannelInterceptor {
     private void validateAccess(String channelId, Principal user){
         if(user == null)
             throw new IllegalArgumentException(("User not found"));
-        Optional<Channel> channelOptional = channelRepository.findById(channelId);
+//        Optional<Channel> channelOptional = channelRepository.findById(channelId); //can be changed back
+        Optional<Channel> channelOptional = channelRepository.findByName(channelId);
         if(channelOptional.isEmpty()){
             throw new IllegalArgumentException("channel not found:- "+channelId);
         }

@@ -67,6 +67,9 @@ public class ChannelService {
             throw new IllegalArgumentException("Target user not found: " + targetUsername);
         }
 
+        if(channel.getType() == Channel.ChannelType.PUBLIC)
+            throw new IllegalArgumentException("Use join for public channels");
+
         channel.getMembers().add(targetUsername);
         return channelRepository.save(channel);
     }

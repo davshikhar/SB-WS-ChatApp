@@ -40,7 +40,8 @@ public class ChatController {
                             SimpMessageHeaderAccessor simpMessageHeaderAccessor,
                             Principal principal){
         simpMessageHeaderAccessor.getSessionAttributes().put("username",principal.getName());
-        simpMessageHeaderAccessor.getSessionAttributes().put("channelName",channelName);
+//        simpMessageHeaderAccessor.getSessionAttributes().put("channelName",channelName); //can be changed back
+        simpMessageHeaderAccessor.getSessionAttributes().put("channelId",channelName);
 
         message.setSender(principal.getName());
         message.setChannelId(channelName);
