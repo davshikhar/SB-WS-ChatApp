@@ -1,9 +1,13 @@
 package org.chat.wschat.Service;
 
 import org.chat.wschat.Repository.ChannelRepository;
+import org.chat.wschat.Repository.InviteRepository;
 import org.chat.wschat.Repository.UserRepository;
 import org.chat.wschat.model.Channel;
+import org.chat.wschat.model.Chat;
+import org.chat.wschat.model.Invite;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +23,12 @@ public class ChannelService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private InviteRepository inviteRepository;
+
+    @Autowired
+    private SimpMessageSendingOperations simpMessageSendingOperations;
 
     @Transactional
     public Channel createChannel(String name, Channel.ChannelType type, String creatorUsername){
@@ -56,7 +66,7 @@ public class ChannelService {
     }
 
     @Transactional
-    public Channel inviteToChannel(String channelId, String inviterUsername, String targetUsername) {
+    public void inviteToChannel(String channelId, String inviterUsername, String targetUsername) {
         Channel channel = channelRepository.findById(channelId).orElseThrow(() -> new IllegalArgumentException(("Channel not found:- ")));
 
         if (!channel.getMembers().contains(inviterUsername)) {
@@ -70,8 +80,38 @@ public class ChannelService {
         if(channel.getType() == Channel.ChannelType.PUBLIC)
             throw new IllegalArgumentException("Use join for public channels");
 
-        channel.getMembers().add(targetUsername);
-        return channelRepository.save(channel);
+        Invite invite = Invite.builder().channelId(channel.getId()).
+                channelName(channel.getName()).
+                fromUser(inviterUsername).
+                toUser(targetUsername).
+                status(Invite.Status.PENDING)
+                .build();
+        invite = inviteRepository.save(invite);
+        
+        Chat notification = Chat.builder().type(Chat.Type.INVITE).sender(inviterUsername).channelId(invite.getId()).
+                content(inviterUsername+" invited you to #" +channel.getName())
+                        .build();
+
+        simpMessageSendingOperations.convertAndSend("/topic/user." + targetUsername, notification);
+    }
+
+    @Transactional
+    public void respondToInvite(String inviteId, String username, boolean accept){
+        Invite invite = inviteRepository.findByIdAndToUser(inviteId, username).orElseThrow(()->
+                new IllegalArgumentException("Invite not found for user: "+username));
+
+        if(invite.getStatus()!= Invite.Status.PENDING){
+            throw new IllegalStateException("Invite already responded to");
+        }
+        invite.setStatus(accept? Invite.Status.ACCEPTED: Invite.Status.REJECTED);
+        inviteRepository.save(invite);
+
+        if(accept){
+            Channel channel = channelRepository.findById(invite.getChannelId())
+                    .orElseThrow(()-> new IllegalArgumentException("Channel not found"));
+            channel.getMembers().add(username);
+            channelRepository.save(channel);
+        }
     }
 
     public boolean isMember(String channelId, String username){

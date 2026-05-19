@@ -559,6 +559,8 @@
         if (channels.length > 0) {
             joinChannel(channels[0]);
         }
+        stompClient.subscribe('/topic/user.' + username, onInviteReceived);
+
         document.getElementById('msg-input').focus();
     }
 
@@ -688,6 +690,64 @@
                 alert('Invite failed: ' + (data.message || res.statusText));
             }
         } catch(err) { alert('Error sending invite'); }
+    }
+
+    function onInviteReceived(payload) {
+        const msg = JSON.parse(payload.body);
+        if (msg.type !== 'INVITE') return;
+
+        // msg.channelId carries the invite UUID, msg.content has the message
+        showInviteNotification(msg.channelId, msg.content, msg.sender);
+    }
+
+    function showInviteNotification(inviteId, message, from) {
+        // Create a toast/popup
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+        position:fixed; bottom:24px; right:24px; z-index:999;
+        background:var(--surface); border:1px solid var(--accent);
+        border-radius:16px; padding:20px 24px; max-width:320px;
+        box-shadow:0 8px 32px rgba(0,0,0,.4); animation: slideIn .3s ease;
+    `;
+        toast.innerHTML = `
+        <div style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px;">Channel Invite</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px;">${escHtml(message)}</div>
+        <div style="display:flex;gap:8px;">
+            <button onclick="respondInvite('${inviteId}', true, this)"
+                style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:8px;
+                       font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;">
+                Accept ✓
+            </button>
+            <button onclick="respondInvite('${inviteId}', false, this)"
+                style="flex:1;padding:9px;background:var(--surface2);color:var(--muted);
+                       border:1px solid var(--border);border-radius:8px;
+                       font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;">
+                Reject ✗
+            </button>
+        </div>
+    `;
+        document.body.appendChild(toast);
+        // Auto-dismiss after 30 seconds
+        setTimeout(() => toast.remove(), 30000);
+    }
+
+    async function respondInvite(inviteId, accept, btn) {
+        const toast = btn.closest('div[style*="position:fixed"]');
+        try {
+            const res = await fetch(`/channels/invites/${inviteId}/respond?accept=${accept}`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + jwtToken }
+            });
+            if (res.ok) {
+                toast.remove();
+                if (accept) {
+                    await loadChannels(); // refresh channel list
+                    alert('You joined the channel! Click it in the sidebar.');
+                }
+            } else {
+                alert('Failed to respond to invite');
+            }
+        } catch(err) { alert('Error responding to invite'); }
     }
 
     /* ─── Send message ─── */
