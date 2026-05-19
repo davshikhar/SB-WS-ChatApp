@@ -246,6 +246,7 @@
             padding: 24px 24px 16px;
             display: flex; flex-direction: column; gap: 2px;
             scroll-behavior: smooth;
+            align-items: stretch;
         }
         #messages::-webkit-scrollbar { width: 4px; }
         #messages::-webkit-scrollbar-track { background: transparent; }
@@ -361,6 +362,56 @@
             #app.visible { grid-template-columns: 1fr; }
             .sidebar { display: none; }
         }
+        .ch-menu { position: relative; }
+
+        .ch-menu-btn {
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: .9rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            opacity: 0;
+            transition: opacity .15s, color .15s;
+            line-height: 1;
+        }
+        .channel-item:hover .ch-menu-btn { opacity: 1; }
+        .ch-menu-btn:hover { color: var(--text); }
+
+        .ch-dropdown {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 6px;
+            z-index: 50;
+            min-width: 130px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.4);
+        }
+        .ch-dropdown.open { display: block; }
+
+        .ch-dropdown-item {
+            display: block;
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            font-family: 'DM Mono', monospace;
+            font-size: .75rem;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: left;
+            transition: background .15s;
+            white-space: nowrap;
+        }
+        .ch-dropdown-item:hover { background: rgba(255,255,255,.06); }
+        .ch-dropdown-item.danger { color: var(--accent2); }
+        .ch-dropdown-item.danger:hover { background: rgba(255,106,138,.08); }
     </style>
 </head>
 <body>
@@ -481,6 +532,7 @@
     let currentChannelId = null;   // channel name (used as ID in routing)
     let currentChannelDbId = null; // actual UUID for invite API
     let channels = [];
+    const messageCache={};
 
     const COLORS = [
         ['#7c6aff','#4a3acc'], ['#ff6a8a','#cc3a5a'], ['#6affd4','#3accaa'],
@@ -592,6 +644,10 @@
     function renderChannelList() {
         const list = document.getElementById('channels-list');
         list.innerHTML = '';
+
+        // close any open dropdown when re-rendering
+        document.querySelectorAll('.ch-dropdown.open').forEach(d => d.classList.remove('open'));
+
         channels.forEach(ch => {
             const isMember = ch.members && ch.members.includes(username);
             const isPublic = ch.type === 'PUBLIC';
@@ -601,27 +657,30 @@
             item.dataset.chId = ch.id;
             item.dataset.chName = ch.name;
 
-            // Right-side action button: join (for non-member public), invite (for member), nothing for private non-member
-            let actionBtn = '';
+            // Build dropdown options
+            let dropdownItems = '';
             if (isPublic && !isMember) {
-                actionBtn = `<button class="btn-invite" title="Join channel"
-                onclick="joinPublicChannel(event, '${ch.id}', '${escHtml(ch.name)}')">+ join</button>`;
-            } else if (isMember) {
-                actionBtn = `<button class="btn-invite" title="Invite user"
-                onclick="openInviteModal(event, '${ch.id}', '${escHtml(ch.name)}')">+ invite</button>`;
+                dropdownItems += `<button class="ch-dropdown-item" onclick="joinPublicChannel(event,'${ch.id}','${escHtml(ch.name)}')">+ join</button>`;
+            }
+            if (isMember) {
+                dropdownItems += `<button class="ch-dropdown-item" onclick="openInviteModal(event,'${ch.id}','${escHtml(ch.name)}')">+ invite</button>`;
+                dropdownItems += `<button class="ch-dropdown-item danger" onclick="leaveChannel(event,'${ch.id}','${escHtml(ch.name)}')">✕ leave</button>`;
             }
 
             item.innerHTML = `
             <span class="hash">#</span>
             <span class="ch-name">${escHtml(ch.name)}</span>
             <span class="ch-type">${ch.type === 'PRIVATE' ? '🔒' : ''}</span>
-            ${actionBtn}
+            ${dropdownItems ? `
+            <div class="ch-menu">
+                <button class="ch-menu-btn" onclick="toggleChMenu(event, this)">⋯</button>
+                <div class="ch-dropdown">${dropdownItems}</div>
+            </div>` : ''}
         `;
 
             item.addEventListener('click', (e) => {
-                if (e.target.classList.contains('btn-invite')) return;
+                if (e.target.closest('.ch-menu')) return;
                 if (isPublic && !isMember) {
-                    // clicking the channel row itself also joins
                     joinPublicChannel(e, ch.id, ch.name);
                     return;
                 }
@@ -630,6 +689,53 @@
 
             list.appendChild(item);
         });
+    }
+
+    function toggleChMenu(e, btn) {
+        e.stopPropagation();
+        const dropdown = btn.nextElementSibling;
+        const isOpen = dropdown.classList.contains('open');
+
+        // close all other open dropdowns first
+        document.querySelectorAll('.ch-dropdown.open').forEach(d => d.classList.remove('open'));
+
+        if (!isOpen) dropdown.classList.add('open');
+    }
+
+    // close dropdowns when clicking anywhere else
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.ch-dropdown.open').forEach(d => d.classList.remove('open'));
+    });
+
+    async function leaveChannel(e, chId, chName) {
+        e.stopPropagation();
+        if (!confirm(`Leave #${chName}?`)) return;
+        try {
+            const res = await fetch(`/channels/${chId}/leave`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + jwtToken }
+            });
+            if (res.ok) {
+                // if we're currently in this channel, clear it
+                if (currentChannelId === chName) {
+                    currentChannelId = null;
+                    currentChannelDbId = null;
+                    document.getElementById('messages').innerHTML = '';
+                    document.getElementById('header-channel-name').textContent = 'general';
+                    if (window._currentSub) {
+                        window._currentSub.unsubscribe();
+                        window._currentSub = null;
+                    }
+                }
+                delete messageCache[chName];
+                await loadChannels();
+            } else {
+                const data = await res.json().catch(() => ({}));
+                alert('Failed to leave: ' + (data.message || res.statusText));
+            }
+        } catch(err) {
+            alert('Error leaving channel');
+        }
     }
 
     async function joinPublicChannel(e, chId, chName) {
@@ -655,20 +761,26 @@
     function joinChannel(ch) {
         if (currentChannelId === ch.name) return;
 
-        // Unsubscribe old
+        // Save current channel's messages before leaving
+        if (currentChannelId) {
+            messageCache[currentChannelId] = document.getElementById('messages').innerHTML;
+        }
+
         if (window._currentSub) window._currentSub.unsubscribe();
 
         currentChannelId = ch.name;
         currentChannelDbId = ch.id;
 
         document.getElementById('header-channel-name').textContent = ch.name;
-        document.getElementById('messages').innerHTML = '';
         document.getElementById('msg-input').placeholder = `message #${ch.name}…`;
 
-        // Subscribe
+        // Restore cached messages or start fresh
+        const container = document.getElementById('messages');
+        container.innerHTML = messageCache[ch.name] || '';
+        container.scrollTop = container.scrollHeight;
+
         window._currentSub = stompClient.subscribe('/topic/channel.' + ch.name, onMessageReceived);
 
-        // Announce join
         stompClient.send('/app/channel.' + ch.name + '.join', {},
             JSON.stringify({ sender: username, type: 'JOIN' }));
 
@@ -842,19 +954,31 @@
             container.appendChild(el);
         } else {
             const [bg] = colorFor(msg.sender);
+            const isMine = msg.sender === username;
             const el = document.createElement('div');
             el.className = 'msg';
+            el.style.cssText = `
+            flex-direction: ${isMine ? 'row-reverse' : 'row'};
+            align-self: ${isMine ? 'flex-end' : 'flex-start'};
+            max-width: 75%;
+        `;
             el.innerHTML = `
-                <div class="avatar" style="background:${bg}20;color:${bg};border:1px solid ${bg}40">
-                    ${msg.avatar || getInitials(msg.sender)}
+            <div class="avatar" style="background:${bg}20;color:${bg};border:1px solid ${bg}40">
+                ${msg.avatar || getInitials(msg.sender)}
+            </div>
+            <div class="msg-body" style="align-items:${isMine ? 'flex-end' : 'flex-start'}; display:flex; flex-direction:column;">
+                <div class="msg-meta" style="flex-direction:${isMine ? 'row-reverse' : 'row'};">
+                    <span class="msg-sender" style="color:${bg}">${escHtml(msg.sender)}</span>
+                    <span class="msg-time">${msg.timeStamp || ''}</span>
                 </div>
-                <div class="msg-body">
-                    <div class="msg-meta">
-                        <span class="msg-sender" style="color:${bg}">${escHtml(msg.sender)}</span>
-                        <span class="msg-time">${msg.timeStamp || ''}</span>
-                    </div>
-                    <div class="msg-text">${escHtml(msg.content)}</div>
-                </div>`;
+                <div class="msg-text" style="
+                    background:${isMine ? 'rgba(124,106,255,0.15)' : 'rgba(255,255,255,0.04)'};
+                    border: 1px solid ${isMine ? 'rgba(124,106,255,0.3)' : 'var(--border)'};
+                    padding: 10px 14px;
+                    border-radius: ${isMine ? '16px 4px 16px 16px' : '4px 16px 16px 16px'};
+                    text-align: ${isMine ? 'right' : 'left'};
+                ">${escHtml(msg.content)}</div>
+            </div>`;
             container.appendChild(el);
         }
         container.scrollTop = container.scrollHeight;

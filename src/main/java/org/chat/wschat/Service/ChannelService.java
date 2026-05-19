@@ -73,6 +73,11 @@ public class ChannelService {
             throw new IllegalStateException("Inviter is not a member of the channel");
         }
 
+        if (channel.getType() == Channel.ChannelType.PRIVATE &&
+                !channel.getCreatedBy().equals(inviterUsername)) {
+            throw new IllegalStateException("Only the creator can invite users to a private channel");
+        }
+
         if (!userRepository.existsByUsername(targetUsername)) {
             throw new IllegalArgumentException("Target user not found: " + targetUsername);
         }
@@ -112,6 +117,20 @@ public class ChannelService {
             channel.getMembers().add(username);
             channelRepository.save(channel);
         }
+    }
+
+    @Transactional
+    public void leaveChannel(String channelId, String username){
+        Channel channel = channelRepository.findById(channelId).orElseThrow(()->new IllegalArgumentException("Channel not found"));
+        if(!channel.getMembers().contains(username)){
+            throw new IllegalArgumentException("User is not a member of the channel");
+        }
+        if(channel.getCreatedBy().equals(username)){
+            throw new IllegalArgumentException("Cannot leave the channel yu created");
+        }
+
+        channel.getMembers().remove(username);
+        channelRepository.save(channel);
     }
 
     public boolean isMember(String channelId, String username){

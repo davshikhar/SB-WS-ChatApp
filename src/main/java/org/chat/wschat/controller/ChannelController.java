@@ -50,4 +50,16 @@ public class ChannelController {
         return ResponseEntity.ok(Map.of("message",accept?"Invite accepted":"Invite Rejected"));
     }
 
+    @PostMapping("/{id}/leave")
+    public ResponseEntity<?> leaveChannel(@PathVariable String id, Principal principal){
+        try{
+            channelService.leaveChannel(id, principal.getName());
+            return ResponseEntity.ok(Map.of("message","Left channel successfully"));
+        }
+        catch(IllegalStateException | IllegalArgumentException e){
+            return ResponseEntity.badRequest().body(Map.of("message",e.getMessage()));
+        }
+    }
+
+
 }
