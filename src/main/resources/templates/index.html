@@ -395,7 +395,10 @@
 
         <div class="channels-header">
             <div class="channels-label">Channels</div>
-            <button class="btn-new-channel" onclick="openCreateModal()">+ new</button>
+            <div style="display:flex; gap:6px;">
+                <button class="btn-new-channel" onclick="loadChannels()" title="Refresh channels">↻</button>
+                <button class="btn-new-channel" onclick="openCreateModal()">+ new</button>
+            </div>
         </div>
 
         <div class="channels-list" id="channels-list">
@@ -571,6 +574,8 @@
 
     /* ─── Channel loading ─── */
     async function loadChannels() {
+        const refreshBtn = document.querySelector('.channels-header .btn-new-channel');
+        if (refreshBtn) refreshBtn.style.opacity = '0.4';
         try {
             const res = await fetch('/channels', {
                 headers: { 'Authorization': 'Bearer ' + jwtToken }
@@ -579,6 +584,8 @@
             renderChannelList();
         } catch(err) {
             console.error('Failed to load channels', err);
+        } finally {
+            if (refreshBtn) refreshBtn.style.opacity = '1';
         }
     }
 
@@ -586,22 +593,62 @@
         const list = document.getElementById('channels-list');
         list.innerHTML = '';
         channels.forEach(ch => {
+            const isMember = ch.members && ch.members.includes(username);
+            const isPublic = ch.type === 'PUBLIC';
+
             const item = document.createElement('div');
             item.className = 'channel-item' + (currentChannelId === ch.name ? ' active' : '');
             item.dataset.chId = ch.id;
             item.dataset.chName = ch.name;
+
+            // Right-side action button: join (for non-member public), invite (for member), nothing for private non-member
+            let actionBtn = '';
+            if (isPublic && !isMember) {
+                actionBtn = `<button class="btn-invite" title="Join channel"
+                onclick="joinPublicChannel(event, '${ch.id}', '${escHtml(ch.name)}')">+ join</button>`;
+            } else if (isMember) {
+                actionBtn = `<button class="btn-invite" title="Invite user"
+                onclick="openInviteModal(event, '${ch.id}', '${escHtml(ch.name)}')">+ invite</button>`;
+            }
+
             item.innerHTML = `
-                <span class="hash">#</span>
-                <span class="ch-name">${escHtml(ch.name)}</span>
-                <span class="ch-type">${ch.type === 'PRIVATE' ? '🔒' : ''}</span>
-                <button class="btn-invite" title="Invite user" onclick="openInviteModal(event, '${ch.id}', '${escHtml(ch.name)}')">+ invite</button>
-            `;
+            <span class="hash">#</span>
+            <span class="ch-name">${escHtml(ch.name)}</span>
+            <span class="ch-type">${ch.type === 'PRIVATE' ? '🔒' : ''}</span>
+            ${actionBtn}
+        `;
+
             item.addEventListener('click', (e) => {
                 if (e.target.classList.contains('btn-invite')) return;
-                joinChannel(ch);
+                if (isPublic && !isMember) {
+                    // clicking the channel row itself also joins
+                    joinPublicChannel(e, ch.id, ch.name);
+                    return;
+                }
+                if (isMember) joinChannel(ch);
             });
+
             list.appendChild(item);
         });
+    }
+
+    async function joinPublicChannel(e, chId, chName) {
+        e.stopPropagation();
+        try {
+            const res = await fetch(`/channels/${chId}/join`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + jwtToken }
+            });
+            if (res.ok) {
+                await loadChannels(); // refresh so isMember becomes true
+                const ch = channels.find(c => c.id === chId);
+                if (ch) joinChannel(ch); // jump right in
+            } else {
+                alert('Failed to join channel');
+            }
+        } catch(err) {
+            alert('Error joining channel');
+        }
     }
 
     /* ─── Join a channel ─── */
@@ -696,12 +743,12 @@
         const msg = JSON.parse(payload.body);
         if (msg.type !== 'INVITE') return;
 
+        console.log('INVITE payload:', msg);
         // msg.channelId carries the invite UUID, msg.content has the message
         showInviteNotification(msg.channelId, msg.content, msg.sender);
     }
 
-    function showInviteNotification(inviteId, message, from) {
-        // Create a toast/popup
+    function showInviteNotification(inviteId, channelName, from) {
         const toast = document.createElement('div');
         toast.style.cssText = `
         position:fixed; bottom:24px; right:24px; z-index:999;
@@ -709,16 +756,22 @@
         border-radius:16px; padding:20px 24px; max-width:320px;
         box-shadow:0 8px 32px rgba(0,0,0,.4); animation: slideIn .3s ease;
     `;
+        toast.className = 'invite-toast';
         toast.innerHTML = `
         <div style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px;">Channel Invite</div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px;">${escHtml(message)}</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">
+            <span style="color:var(--accent)">${escHtml(from)}</span> invited you to
+        </div>
+        <div style="font-size:.9rem;color:var(--text);margin-bottom:16px;">
+            <span style="color:var(--accent)">#</span>${escHtml(channelName)}
+        </div>
         <div style="display:flex;gap:8px;">
-            <button onclick="respondInvite('${inviteId}', true, this)"
+            <button onclick="respondInvite('${inviteId}', '${escHtml(channelName)}', true, this)"
                 style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:8px;
                        font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;">
                 Accept ✓
             </button>
-            <button onclick="respondInvite('${inviteId}', false, this)"
+            <button onclick="respondInvite('${inviteId}', '${escHtml(channelName)}', false, this)"
                 style="flex:1;padding:9px;background:var(--surface2);color:var(--muted);
                        border:1px solid var(--border);border-radius:8px;
                        font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;">
@@ -727,12 +780,13 @@
         </div>
     `;
         document.body.appendChild(toast);
-        // Auto-dismiss after 30 seconds
         setTimeout(() => toast.remove(), 30000);
     }
 
-    async function respondInvite(inviteId, accept, btn) {
-        const toast = btn.closest('div[style*="position:fixed"]');
+    async function respondInvite(inviteId, channelName, accept, btn) {
+        const toast = btn.closest('.invite-toast');
+        toast.querySelectorAll('button').forEach(b => b.disabled = true);
+
         try {
             const res = await fetch(`/channels/invites/${inviteId}/respond?accept=${accept}`, {
                 method: 'POST',
@@ -741,13 +795,20 @@
             if (res.ok) {
                 toast.remove();
                 if (accept) {
-                    await loadChannels(); // refresh channel list
-                    alert('You joined the channel! Click it in the sidebar.');
+                    await loadChannels(); // refreshes channels array with the new channel
+                    await new Promise(r => setTimeout(r, 300));
+                    const newChannel = channels.find(ch => ch.name === channelName);
+                    if (newChannel) {joinChannel(newChannel);}// auto-jump into it
+                    else{alert("Joined! Refresh if channel does not appear")}
                 }
             } else {
+                toast.querySelectorAll('button').forEach(b => b.disabled = false);
                 alert('Failed to respond to invite');
             }
-        } catch(err) { alert('Error responding to invite'); }
+        } catch(err) {
+            toast.querySelectorAll('button').forEach(b => b.disabled = false);
+            alert('Error responding to invite');
+        }
     }
 
     /* ─── Send message ─── */

@@ -89,7 +89,7 @@ public class ChannelService {
         invite = inviteRepository.save(invite);
         
         Chat notification = Chat.builder().type(Chat.Type.INVITE).sender(inviterUsername).channelId(invite.getId()).
-                content(inviterUsername+" invited you to #" +channel.getName())
+                content(channel.getName())
                         .build();
 
         simpMessageSendingOperations.convertAndSend("/topic/user." + targetUsername, notification);
