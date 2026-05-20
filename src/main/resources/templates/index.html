@@ -420,18 +420,25 @@
 <div id="login-screen">
     <div class="login-card">
         <div class="login-logo">Live<span>Chat</span></div>
-        <div class="login-sub">// real-time messaging over websocket</div>
+<!--        <div class="login-sub" id="login-sub">// real-time messaging over websocket</div>-->
         <div class="input-group">
             <input id="username-input" type="text" placeholder="username" maxlength="24" autocomplete="off"/>
         </div>
-        <div class="input-group">
-            <input id="email-input" type="email" placeholder="email (register only)" maxlength="50" autocomplete="off"/>
+        <div class="input-group" id="email-group">
+            <input id="email-input" type="email" placeholder="email" maxlength="50" autocomplete="off"/>
         </div>
         <div class="input-group">
             <input id="password-input" type="password" placeholder="password" maxlength="50" autocomplete="off"/>
         </div>
-        <button class="btn-join" onclick="loginUser()">login →</button>
-        <button class="btn-join" onclick="registerUser()" style="background: var(--accent3); color: #000; margin-top: 8px;">register →</button>
+        <button class="btn-join" id="primary-btn" onclick="loginUser()">login →</button>
+        <p style="margin-top:16px; font-size:.75rem; color:var(--muted);">
+            <span id="toggle-text">Don't have an account?</span>
+            <button onclick="toggleMode()" id="toggle-btn"
+                    style="background:none; border:none; color:var(--accent); cursor:pointer;
+                   font-family:'DM Mono',monospace; font-size:.75rem; margin-left:4px;">
+                register here
+            </button>
+        </p>
     </div>
 </div>
 
@@ -533,6 +540,7 @@
     let currentChannelDbId = null; // actual UUID for invite API
     let channels = [];
     const messageCache={};
+    let isLoginMode = true;
 
     const COLORS = [
         ['#7c6aff','#4a3acc'], ['#ff6a8a','#cc3a5a'], ['#6affd4','#3accaa'],
@@ -562,9 +570,48 @@
                 body: JSON.stringify({ username: u, email: e, password: p })
             });
             const data = await res.json();
-            alert(res.ok ? 'Registered! Please login.' : 'Registration failed: ' + (data.message || 'Unknown error'));
+            if(res.ok){
+                document.getElementById('email-input').value = '';
+                document.getElementById('password-input').value= '';
+                toggleMode();
+                alert('Registered Successfully! Please login')
+            }
+            else{
+                alert("Registration failed: "+(data.message || 'Unknown error'));
+            }
         } catch(err) { alert('Registration failed'); }
     }
+
+    function toggleMode() {
+        isLoginMode = !isLoginMode;
+        const emailGroup = document.getElementById('email-group');
+        const primaryBtn = document.getElementById('primary-btn');
+        const toggleText = document.getElementById('toggle-text');
+        const toggleBtn = document.getElementById('toggle-btn');
+        const loginSub = document.getElementById('login-sub');
+
+        if (isLoginMode) {
+            emailGroup.style.display = 'none';
+            primaryBtn.textContent = 'login →';
+            primaryBtn.style.background = 'var(--accent)';
+            primaryBtn.onclick = loginUser;
+            toggleText.textContent = "Don't have an account?";
+            toggleBtn.textContent = 'register here';
+            // loginSub.textContent = '// real-time messaging over websocket';
+        } else {
+            emailGroup.style.display = 'block';
+            primaryBtn.textContent = 'register →';
+            primaryBtn.style.background = 'var(--accent3)';
+            primaryBtn.style.color = '#000';
+            primaryBtn.onclick = registerUser;
+            toggleText.textContent = 'Already have an account?';
+            toggleBtn.textContent = 'login here';
+            loginSub.textContent = '// create your account';
+        }
+    }
+
+    // hide email field by default on page load
+    document.getElementById('email-group').style.display = 'none';
 
     /* ─── Login ─── */
     async function loginUser() {
