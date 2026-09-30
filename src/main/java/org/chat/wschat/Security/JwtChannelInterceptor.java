@@ -24,6 +24,8 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel messageChannel){
+//        MessageHeaderAccessor.getAccessor() returns the live, attached accessor so when we
+//        change or do 'setUser' it actually modifies the real message
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 
         if(accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())){
